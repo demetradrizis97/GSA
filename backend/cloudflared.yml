@@ -1,0 +1,25 @@
+# Cloudflare Tunnel Configuration (cloudflared)
+# Use this configuration if you run backend/server.js on a private server, VM, or local environment
+# and want to expose it securely through Cloudflare without opening incoming firewall ports.
+#
+# Quick setup:
+# 1. Install cloudflared: brew install cloudflare/cloudflare/cloudflared (Mac) or curl -L https://pkg.cloudflare.com/...
+# 2. Authenticate: cloudflared tunnel login
+# 3. Create a tunnel: cloudflared tunnel create news-globe-backend
+# 4. Copy your Tunnel UUID and credentials-file path below
+# 5. Route DNS: cloudflared tunnel route dns news-globe-backend api.yourdomain.com
+# 6. Run: cloudflared tunnel --config backend/cloudflared.yml run
+
+tunnel: <YOUR_TUNNEL_UUID>
+credentials-file: ~/.cloudflared/<YOUR_TUNNEL_UUID>.json
+
+ingress:
+  # Route traffic for your API hostname to local server
+  - hostname: api.yourdomain.com
+    service: http://localhost:8787
+    originRequest:
+      connectTimeout: 10s
+      noTLSVerify: false
+
+  # Default catch-all rule (required by cloudflared)
+  - service: http_status:404
