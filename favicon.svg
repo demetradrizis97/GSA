@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <!-- Deep oceanic dark blue radial sphere glow -->
+    <radialGradient id="oceanShade" cx="35%" cy="30%" r="72%">
+      <stop offset="0%" stop-color="#1a3b63" />
+      <stop offset="35%" stop-color="#0b172a" />
+      <stop offset="75%" stop-color="#060c16" />
+      <stop offset="100%" stop-color="#02050a" />
+    </radialGradient>
+
+    <!-- Limb / Atmosphere glow gradient -->
+    <linearGradient id="rimLighting" x1="15%" y1="10%" x2="85%" y2="90%">
+      <stop offset="0%" stop-color="#6cf0ff" stop-opacity="0.85" />
+      <stop offset="45%" stop-color="#4a90e2" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#142c4a" stop-opacity="0.15" />
+    </linearGradient>
+
+    <!-- Clip path ensuring nothing bleeds outside the circular globe -->
+    <clipPath id="globeBoundary">
+      <circle cx="32" cy="32" r="30" />
+    </clipPath>
+  </defs>
+
+  <!-- Globe Group (Transparent background outside this sphere) -->
+  <g clip-path="url(#globeBoundary)">
+    <!-- Base ocean body -->
+    <circle cx="32" cy="32" r="30" fill="url(#oceanShade)" />
+
+    <!-- Vector Graticules (Latitude & Longitude Grid) -->
+    <!-- Equator -->
+    <line x1="2" y1="32" x2="62" y2="32" stroke="#4a80b8" stroke-width="0.75" stroke-opacity="0.32" />
+    
+    <!-- Parallels -->
+    <path d="M 6.5,20 Q 32,25 57.5,20" fill="none" stroke="#4a80b8" stroke-width="0.6" stroke-opacity="0.28" />
+    <path d="M 6.5,44 Q 32,39 57.5,44" fill="none" stroke="#4a80b8" stroke-width="0.6" stroke-opacity="0.28" />
+    <path d="M 16,11 Q 32,14 48,11" fill="none" stroke="#4a80b8" stroke-width="0.5" stroke-opacity="0.22" />
+    <path d="M 16,53 Q 32,50 48,53" fill="none" stroke="#4a80b8" stroke-width="0.5" stroke-opacity="0.22" />
+
+    <!-- Meridians -->
+    <line x1="32" y1="2" x2="32" y2="62" stroke="#4a80b8" stroke-width="0.75" stroke-opacity="0.32" />
+    <ellipse cx="32" cy="32" rx="13" ry="30" fill="none" stroke="#4a80b8" stroke-width="0.65" stroke-opacity="0.28" />
+    <ellipse cx="32" cy="32" rx="23" ry="30" fill="none" stroke="#4a80b8" stroke-width="0.65" stroke-opacity="0.28" />
+
+    <!-- Vector Base Landmass Silhouettes (Americas, Eurasia, Africa, Europe) -->
+    <!-- North & Central America -->
+    <path d="M 18,12 Q 22,10 26,13 Q 29,18 25,23 Q 23,26 21,28 Q 19,25 16,21 Q 14,16 18,12 Z" 
+          fill="#4fe0c2" fill-opacity="0.12" 
+          stroke="#7fc8ff" stroke-width="0.8" stroke-opacity="0.7" />
+    
+    <!-- South America -->
+    <path d="M 23,31 Q 28,34 26,42 Q 24,48 22,50 Q 20,44 21,37 Z" 
+          fill="#4fe0c2" fill-opacity="0.12" 
+          stroke="#7fc8ff" stroke-width="0.8" stroke-opacity="0.7" />
+
+    <!-- Europe & Mediterranean -->
+    <path d="M 33,14 Q 38,12 41,15 Q 39,20 35,21 Q 33,18 33,14 Z" 
+          fill="#4fe0c2" fill-opacity="0.12" 
+          stroke="#7fc8ff" stroke-width="0.8" stroke-opacity="0.7" />
+
+    <!-- Africa -->
+    <path d="M 34,23 Q 44,24 43,34 Q 41,45 37,47 Q 34,42 33,32 Z" 
+          fill="#4fe0c2" fill-opacity="0.12" 
+          stroke="#7fc8ff" stroke-width="0.8" stroke-opacity="0.7" />
+
+    <!-- Asia & Far East -->
+    <path d="M 42,12 Q 52,11 56,17 Q 53,24 48,25 Q 43,23 42,16 Z" 
+          fill="#4fe0c2" fill-opacity="0.12" 
+          stroke="#7fc8ff" stroke-width="0.8" stroke-opacity="0.7" />
+
+    <!-- Atmospheric Inner Shadow / Dark Limb (Bottom-Right) -->
+    <radialGradient id="shadowLimb" cx="75%" cy="75%" r="65%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.65" />
+      <stop offset="50%" stop-color="#000000" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+    <circle cx="32" cy="32" r="30" fill="url(#shadowLimb)" />
+
+    <!-- Top-Left Crest Glint -->
+    <path d="M 12,18 A 27,27 0 0,1 38,7" fill="none" stroke="#6cf0ff" stroke-width="1.2" stroke-opacity="0.45" stroke-linecap="round" />
+  </g>
+
+  <!-- Crisp Outer Rim / Vector Sphere Outline -->
+  <circle cx="32" cy="32" r="29.5" fill="none" stroke="url(#rimLighting)" stroke-width="1.2" />
+</svg>
