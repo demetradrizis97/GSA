@@ -1,0 +1,20 @@
+{
+  "name": "reports-map",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Interactive 3D news globe viewer with real-time public news APIs and Cloudflare backend proxy.",
+  "scripts": {
+    "build": "node tools/build.js",
+    "serve": "node tools/serve.js",
+    "backend": "node backend/server.js",
+    "dev:backend": "node backend/server.js",
+    "deploy:backend": "wrangler deploy",
+    "fetch:news": "node tools/fetch-news-snapshot.js",
+    "pack": "node tools/pack-project.js",
+    "pack:consolidated": "node tools/bundle-consolidated.js",
+    "rebuild": "node tools/rebuild-project.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.136.1"
+  }
+}

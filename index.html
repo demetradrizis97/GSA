@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Global News Monitor | Real-Time Geopolitical & Event Globe</title>
+    <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
+    <link rel="alternate icon" type="image/png" href="./assets/favicon.png" />
+    <link rel="apple-touch-icon" href="./assets/favicon.png" />
+    <link rel="stylesheet" href="./src/styles.css" />
+    <script src="./assets/vendor/mgrs.min.js"></script>
+    <script type="module" src="./src/main.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <section class="globe-panel">
+        <div class="panel-header">
+          <div class="header-brand">
+            <h1>Global News Monitor</h1>
+            <span class="brand-tag">Real-Time Geopolitical Intelligence</span>
+          </div>
+          <div class="status-row">
+            <span class="status-pill live-pill" id="live-indicator">
+              <span class="pulse-dot"></span>
+              <span id="feed-status">LIVE NEWS</span>
+            </span>
+            <span class="status-pill muted" id="report-count">Loading headlines...</span>
+            <button id="refresh-news-btn" class="refresh-btn" type="button" title="Refresh live headlines from APIs">
+              ↻ Refresh
+            </button>
+          </div>
+        </div>
+
+        <div class="panel-toolbar">
+          <div class="toolbar-start">
+            <!-- Category Filter Chips -->
+            <div class="category-filters" role="group" aria-label="Filter headlines by category">
+              <button class="filter-chip active" data-category="ALL" type="button">All</button>
+              <button class="filter-chip" data-category="CONFLICT" type="button">Conflict</button>
+              <button class="filter-chip" data-category="DISASTER" type="button">Disasters</button>
+              <button class="filter-chip" data-category="DIPLOMACY" type="button">Diplomacy</button>
+              <button class="filter-chip" data-category="SECURITY" type="button">Security</button>
+              <button class="filter-chip" data-category="TECH/CYBER" type="button">Tech</button>
+            </div>
+
+            <!-- Custom Importer (Collapsible Drawer) -->
+            <section class="import-drawer">
+              <button id="import-toggle" class="import-toggle secondary-btn" type="button" aria-expanded="false" aria-controls="import-body">
+                Custom Data
+              </button>
+              <div id="import-body" class="drawer-body" hidden>
+                <p class="section-copy">
+                  Paste custom JSON reports (`lat/lon`, MGRS, or coordinates) or reload live APIs.
+                </p>
+                <textarea id="report-input" spellcheck="false" placeholder="Paste custom JSON array here..."></textarea>
+                <div class="button-row">
+                  <button id="load-live-api" type="button">Fetch Live News</button>
+                  <button id="import-reports" type="button">Import Custom JSON</button>
+                </div>
+                <pre id="import-feedback" class="feedback"></pre>
+              </div>
+            </section>
+          </div>
+
+          <div class="toolbar-end">
+            <section class="intensity-legend" aria-label="Conflict and alert intensity legend">
+              <span class="control-label">Severity</span>
+              <div class="legend-row">
+                <span class="legend-item"><span class="legend-swatch low"></span>Low</span>
+                <span class="legend-item"><span class="legend-swatch elevated"></span>Elevated</span>
+                <span class="legend-item"><span class="legend-swatch high"></span>High</span>
+                <span class="legend-item"><span class="legend-swatch critical"></span>Critical</span>
+              </div>
+            </section>
+
+            <div class="layer-picker">
+              <span class="control-label">Base</span>
+              <div class="layer-switcher" role="group" aria-label="Base layer">
+                <button class="layer-option active" type="button" data-layer="current" aria-pressed="true">Vector</button>
+                <button class="layer-option" type="button" data-layer="blueMarble" aria-pressed="false">Blue Marble</button>
+                <button class="layer-option" type="button" data-layer="openStreetMap" aria-pressed="false">OSM</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="canvas-frame">
+          <canvas id="globe" width="960" height="960" aria-label="Interactive 3D News Globe"></canvas>
+          <section class="map-overlay-card" hidden>
+            <div class="section-title">
+              <h2>Selected Headline</h2>
+              <button id="close-card-btn" class="close-card" type="button" aria-label="Close story panel">✕</button>
+            </div>
+            <div id="report-card" class="report-card"></div>
+          </section>
+        </div>
+      </section>
+
+      <aside class="control-panel" hidden>
+        <section class="card-section">
+          <div class="section-title">
+            <h2>Selected Headline</h2>
+          </div>
+          <div class="report-card empty"></div>
+        </section>
+      </aside>
+    </div>
+  </body>
+</html>
