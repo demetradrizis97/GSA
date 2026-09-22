@@ -1,0 +1,16 @@
+{
+  "createdAt": "2026-09-22T00:48:40.631Z",
+  "fileCount": 13,
+  "codeBundle": "code-bundle.json.txt",
+  "rebuildScript": "rebuild-project.txt",
+  "images": [
+    {
+      "originalPath": "assets/blue-marble-2048.png",
+      "flatName": "IMG__assets__blue-marble-2048.png"
+    },
+    {
+      "originalPath": "assets/osm-world-z4-4096.png",
+      "flatName": "IMG__assets__osm-world-z4-4096.png"
+    }
+  ]
+}

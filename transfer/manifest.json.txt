@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "createdAt": "2026-04-27T22:34:52.686Z",
+  "fileCount": 13,
+  "includedFiles": [
+    "index.html",
+    "package.json",
+    "data-countries-110m.geojson",
+    "src/main.js",
+    "src/styles.css",
+    "tools/serve.js",
+    "tools/pack-project.js",
+    "tools/bundle-consolidated.js",
+    "tools/rebuild-project.js",
+    "tools/package-shared.js",
+    "assets/blue-marble-2048.png",
+    "assets/osm-world-z4-4096.png",
+    "assets/vendor/mgrs.min.js"
+  ],
+  "chunkCount": 8,
+  "chunkSize": 1946447,
+  "outputFileLimit": 10,
+  "outputFileCount": 10,
+  "chunks": [
+    "bundle.part-001.txt",
+    "bundle.part-002.txt",
+    "bundle.part-003.txt",
+    "bundle.part-004.txt",
+    "bundle.part-005.txt",
+    "bundle.part-006.txt",
+    "bundle.part-007.txt",
+    "bundle.part-008.txt"
+  ]
+}

@@ -1,0 +1,54 @@
+const fs = require("fs");
+const path = require("path");
+
+const sourceDir = process.cwd();
+const outputDir = path.resolve(process.argv[2] || path.join(sourceDir, "rebuilt-project"));
+const manifestPath = path.join(sourceDir, "manifest.json.txt");
+const codeBundlePath = path.join(sourceDir, "code-bundle.json.txt");
+
+if (!fs.existsSync(manifestPath)) {
+  console.error("manifest.json.txt was not found in the current directory.");
+  process.exit(1);
+}
+
+if (!fs.existsSync(codeBundlePath)) {
+  console.error("code-bundle.json.txt was not found in the current directory.");
+  process.exit(1);
+}
+
+const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+if (!Array.isArray(manifest.images)) {
+  console.error("manifest.json.txt does not list bundled images.");
+  process.exit(1);
+}
+
+const codeBundle = JSON.parse(fs.readFileSync(codeBundlePath, "utf8"));
+if (!codeBundle.files || typeof codeBundle.files !== "object") {
+  console.error("code-bundle.json.txt does not contain any bundled code files.");
+  process.exit(1);
+}
+
+Object.keys(codeBundle.files).forEach((originalPath) => {
+  const target = path.join(outputDir, originalPath);
+  const parent = path.dirname(target);
+  if (!fs.existsSync(parent)) {
+    fs.mkdirSync(parent, { recursive: true });
+  }
+  fs.writeFileSync(target, codeBundle.files[originalPath], "utf8");
+});
+
+manifest.images.forEach((entry) => {
+  const source = path.join(sourceDir, entry.flatName);
+  if (!fs.existsSync(source)) {
+    throw new Error(`Missing bundled image: ${entry.flatName}`);
+  }
+  const target = path.join(outputDir, entry.originalPath);
+  const parent = path.dirname(target);
+  if (!fs.existsSync(parent)) {
+    fs.mkdirSync(parent, { recursive: true });
+  }
+  fs.copyFileSync(source, target);
+});
+
+const totalFiles = Object.keys(codeBundle.files).length + manifest.images.length;
+console.log(`Rebuilt ${totalFiles} files into ${outputDir}`);
