@@ -29,23 +29,17 @@ const INTENSITY_STYLES = {
 
 const BASE_LAYERS = {
   current: {
-    label: "Current",
-    kind: "vector",
-    attribution: ""
+    kind: "vector"
   },
   blueMarble: {
-    label: "Blue Marble",
     kind: "texture",
     projection: "equirectangular",
-    src: "./assets/blue-marble-2048.png",
-    attribution: "Blue Marble imagery: NASA"
+    src: "./assets/blue-marble-2048.png"
   },
   openStreetMap: {
-    label: "OpenStreetMap",
     kind: "texture",
     projection: "webMercator",
-    src: "./assets/osm-world-z4-4096.png",
-    attribution: "Map data © OpenStreetMap contributors"
+    src: "./assets/osm-world-z4-4096.png"
   }
 };
 
@@ -71,12 +65,11 @@ const layerButtons = Array.from(
   document.querySelectorAll(".layer-option")
 );
 
-let allLiveReports = [];
 let countryFeatures = [];
-let countryLabels = [];
 let reportMarkers = [];
 let projectedMarkers = [];
 let selectedReportId = null;
+let allLiveReports = [];
 
 const textureLayers = new Map();
 const textureBuffer = document.createElement("canvas");
@@ -98,6 +91,10 @@ const state = {
   }
 };
 
+/* ------------------------------------------------------------------
+   General utility functions
+   ------------------------------------------------------------------ */
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -112,10 +109,6 @@ function toDegrees(value) {
 
 function normalizeLongitude(value) {
   return ((value + 180) % 360 + 360) % 360 - 180;
-}
-
-function shortestLongitudeDelta(target, source) {
-  return normalizeLongitude(target - source);
 }
 
 function escapeHtml(value) {
@@ -144,6 +137,39 @@ function normalizeLatLon(lat, lon) {
     longitude
   };
 }
+
+function getIntensityLevel(score) {
+  const value = Number(score);
+
+  if (!Number.isFinite(value)) {
+    return "low";
+  }
+
+  if (value >= 85) {
+    return "critical";
+  }
+
+  if (value >= 65) {
+    return "high";
+  }
+
+  if (value >= 40) {
+    return "elevated";
+  }
+
+  return "low";
+}
+
+function getReportStyle(report) {
+  const level = report.intensityLevel ||
+    getIntensityLevel(report.intensityScore);
+
+  return INTENSITY_STYLES[level] || INTENSITY_STYLES.low;
+}
+
+/* ------------------------------------------------------------------
+   Globe projection and rotation
+   ------------------------------------------------------------------ */
 
 function latLonFromNormalized(nx, ny, centerLon, centerLat) {
   const rho = Math.min(1, Math.hypot(nx, ny));
@@ -190,6 +216,7 @@ function projectPointWithCenter(
   const lambda = toRadians(lon);
   const phi0 = toRadians(centerLat);
   const lambda0 = toRadians(centerLon);
+
   const delta = lambda - lambda0;
 
   const cosPhi = Math.cos(phi);
@@ -237,64 +264,39 @@ function clampPointerToSphere(pointer) {
     return null;
   }
 
-  let nx = (pointer.x - centerX) / radius;
-  let ny = (centerY - pointer.y) / radius;
+  let x = (pointer.x - centerX) / radius;
+  let y = (centerY - pointer.y) / radius;
 
-  const length = Math.hypot(nx, ny);
+  const length = Math.hypot(x, y);
 
   if (length > 1) {
-    nx /= length;
-    ny /= length;
+    x /= length;
+    y /= length;
   }
 
   return {
-    x: nx,
-    y: ny,
+    x,
+    y,
     inside: length <= 1
   };
 }
 
-function invertPoint(pointer, clampOutside) {
-  const clamped = clampPointerToSphere(pointer);
+function invertPoint(pointer) {
+  const point = clampPointerToSphere(pointer);
 
-  if (!clamped || (!clamped.inside && !clampOutside)) {
+  if (!point || !point.inside) {
     return null;
   }
 
   return {
     ...latLonFromNormalized(
-      clamped.x,
-      clamped.y,
+      point.x,
+      point.y,
       state.rotationLon,
       state.rotationLat
     ),
-    inside: clamped.inside
+    inside: true
   };
-}
-
-function candidateRotationScore(candidate, anchor, pointer) {
-  const projected = projectPointWithCenter(
-    anchor.lat,
-    anchor.lon,
-    candidate.lon,
-    candidate.lat,
-    state.view.radius,
-    state.view.centerX,
-    state.view.centerY
-  );
-
-  const distance = Math.hypot(
-    projected.x - pointer.x,
-    projected.y - pointer.y
-  );
-
-  return (
-    distance +
-    Math.abs(
-      shortestLongitudeDelta(candidate.lon, state.rotationLon)
-    ) * 0.2 +
-    Math.abs(candidate.lat - state.rotationLat) * 0.2
-  );
 }
 
 function solveRotationForAnchor(anchor, pointer) {
@@ -310,6 +312,7 @@ function solveRotationForAnchor(anchor, pointer) {
 
   const phi = toRadians(anchor.lat);
   const lambda = toRadians(anchor.lon);
+
   const cosPhi = Math.cos(phi);
   const sinPhi = Math.sin(phi);
 
@@ -318,60 +321,71 @@ function solveRotationForAnchor(anchor, pointer) {
   }
 
   const sinDelta = clamp(x / cosPhi, -1, 1);
+
   const cosDeltaMagnitude = Math.sqrt(
     Math.max(0, 1 - sinDelta * sinDelta)
   );
 
-  const signs = cosDeltaMagnitude < 1e-6
-    ? [1]
-    : [1, -1];
+  const candidates = [];
 
-  const candidates = signs
-    .map((sign) => {
-      const cosDelta = sign * cosDeltaMagnitude;
-      const a = sinPhi;
-      const b = cosPhi * cosDelta;
+  for (const sign of [1, -1]) {
+    const cosDelta = sign * cosDeltaMagnitude;
 
-      const phi0 = Math.atan2(
-        a * z - b * y,
-        a * y + b * z
-      );
+    const a = sinPhi;
+    const b = cosPhi * cosDelta;
 
-      const lambda0 = lambda - Math.atan2(
-        sinDelta,
-        cosDelta
-      );
+    const phi0 = Math.atan2(
+      a * z - b * y,
+      a * y + b * z
+    );
 
-      return {
-        lon: normalizeLongitude(toDegrees(lambda0)),
-        lat: clamp(toDegrees(phi0), -89.999, 89.999)
-      };
-    })
-    .filter((candidate) => {
-      return projectPointWithCenter(
-        anchor.lat,
-        anchor.lon,
-        candidate.lon,
-        candidate.lat,
-        state.view.radius,
-        state.view.centerX,
-        state.view.centerY
-      ).visible;
-    });
+    const lambda0 = lambda - Math.atan2(
+      sinDelta,
+      cosDelta
+    );
+
+    const candidate = {
+      lon: normalizeLongitude(toDegrees(lambda0)),
+      lat: clamp(toDegrees(phi0), -89.999, 89.999)
+    };
+
+    const projected = projectPointWithCenter(
+      anchor.lat,
+      anchor.lon,
+      candidate.lon,
+      candidate.lat,
+      state.view.radius,
+      state.view.centerX,
+      state.view.centerY
+    );
+
+    if (projected.visible) {
+      candidates.push(candidate);
+    }
+  }
 
   if (!candidates.length) {
     return null;
   }
 
   candidates.sort((left, right) => {
-    return (
-      candidateRotationScore(left, anchor, pointer) -
-      candidateRotationScore(right, anchor, pointer)
-    );
+    const leftDistance =
+      Math.abs(left.lat - state.rotationLat) +
+      Math.abs(left.lon - state.rotationLon);
+
+    const rightDistance =
+      Math.abs(right.lat - state.rotationLat) +
+      Math.abs(right.lon - state.rotationLon);
+
+    return leftDistance - rightDistance;
   });
 
   return candidates[0];
 }
+
+/* ------------------------------------------------------------------
+   Globe drawing
+   ------------------------------------------------------------------ */
 
 function drawSphere(centerX, centerY, radius) {
   const glow = ctx.createRadialGradient(
@@ -397,12 +411,144 @@ function drawSphere(centerX, centerY, radius) {
   ctx.stroke();
 }
 
-function drawSphereOutline(centerX, centerY, radius, color) {
+function drawSphereOutline(centerX, centerY, radius) {
   ctx.beginPath();
   ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
   ctx.lineWidth = 1.2;
-  ctx.strokeStyle = color || "rgba(130, 180, 255, 0.24)";
+  ctx.strokeStyle = "rgba(130, 180, 255, 0.24)";
   ctx.stroke();
+}
+
+function generateSamples(start, end, step, builder) {
+  const result = [];
+
+  for (let value = start; value <= end; value += step) {
+    result.push(builder(value));
+  }
+
+  return result;
+}
+
+function drawPolyline(points, centerX, centerY, radius, closePath) {
+  let started = false;
+
+  ctx.beginPath();
+
+  for (const point of points) {
+    const projected = projectPoint(
+      point.lat,
+      point.lon,
+      radius,
+      centerX,
+      centerY
+    );
+
+    if (!projected.visible) {
+      started = false;
+      continue;
+    }
+
+    if (!started) {
+      ctx.moveTo(projected.x, projected.y);
+      started = true;
+    } else {
+      ctx.lineTo(projected.x, projected.y);
+    }
+  }
+
+  if (closePath && started) {
+    ctx.closePath();
+  }
+
+  ctx.stroke();
+}
+
+function drawGraticule(centerX, centerY, radius) {
+  ctx.save();
+  ctx.lineWidth = 0.7;
+  ctx.strokeStyle = "rgba(120, 170, 255, 0.16)";
+
+  for (let lat = -60; lat <= 60; lat += 30) {
+    drawPolyline(
+      generateSamples(-180, 180, 4, (lon) => ({ lat, lon })),
+      centerX,
+      centerY,
+      radius,
+      false
+    );
+  }
+
+  for (let lon = -150; lon <= 180; lon += 30) {
+    drawPolyline(
+      generateSamples(-85, 85, 4, (lat) => ({ lat, lon })),
+      centerX,
+      centerY,
+      radius,
+      false
+    );
+  }
+
+  ctx.restore();
+}
+
+function coordinatesToLatLon(coordinates) {
+  if (!Array.isArray(coordinates)) {
+    return [];
+  }
+
+  if (
+    coordinates.length >= 2 &&
+    typeof coordinates[0] === "number"
+  ) {
+    return [{
+      lon: coordinates[0],
+      lat: coordinates[1]
+    }];
+  }
+
+  return coordinates.flatMap(coordinatesToLatLon);
+}
+
+function drawCountries(centerX, centerY, radius) {
+  ctx.save();
+  ctx.lineWidth = 0.8;
+  ctx.strokeStyle = "rgba(127, 200, 255, 0.32)";
+
+  countryFeatures.forEach((feature) => {
+    const geometry = feature.geometry;
+
+    if (!geometry) {
+      return;
+    }
+
+    if (geometry.type === "Polygon") {
+      geometry.coordinates.forEach((ring) => {
+        drawPolyline(
+          coordinatesToLatLon(ring),
+          centerX,
+          centerY,
+          radius,
+          true
+        );
+      });
+    }
+
+    if (geometry.type === "MultiPolygon") {
+      geometry.coordinates.forEach((polygon) => {
+        polygon.forEach((ring) => {
+          drawPolyline(
+            coordinatesToLatLon(ring),
+            centerX,
+            centerY,
+            radius,
+            true
+          );
+        });
+      });
+    }
+  });
+
+  ctx.restore();
 }
 
 function wrapUnit(value) {
@@ -413,13 +559,9 @@ function getTextureCoordinates(projection, lat, lon) {
   const u = wrapUnit((lon + 180) / 360);
 
   if (projection === "webMercator") {
-    const mercatorLimit = 85.05112878;
+    const limit = 85.05112878;
 
-    const clampedLat = clamp(
-      lat,
-      -mercatorLimit,
-      mercatorLimit
-    );
+    const clampedLat = clamp(lat, -limit, limit);
 
     const mercator = Math.log(
       Math.tan(Math.PI / 4 + toRadians(clampedLat) / 2)
@@ -438,10 +580,6 @@ function getTextureCoordinates(projection, lat, lon) {
 }
 
 function sampleTexturePixel(texture, lat, lon) {
-  if (!texture || !texture.data) {
-    return [12, 18, 28, 255];
-  }
-
   const { u, v } = getTextureCoordinates(
     texture.projection,
     lat,
@@ -471,32 +609,16 @@ function sampleTexturePixel(texture, lat, lon) {
 function drawTexturedSphere(centerX, centerY, radius, layerKey) {
   const texture = textureLayers.get(layerKey);
 
-  if (!texture || !texture.data) {
+  if (!texture) {
     drawSphere(centerX, centerY, radius);
     return;
   }
 
-  const deviceScale = Math.min(
-    window.devicePixelRatio || 1,
-    2
-  );
-
-  const textureLimit = Math.min(
-    texture.width,
-    texture.height
-  );
-
-  const desiredSize = Math.round(
-    radius * 2 * deviceScale *
-    (state.dragging ? 0.82 : 1.18)
-  );
-
   const size = Math.max(
-    state.dragging ? 640 : 960,
+    600,
     Math.min(
-      state.dragging ? 1152 : 1720,
-      textureLimit,
-      desiredSize
+      1400,
+      Math.round(radius * 2 * Math.min(window.devicePixelRatio || 1, 2))
     )
   );
 
@@ -579,289 +701,11 @@ function drawBaseLayer(centerX, centerY, radius) {
     radius,
     state.baseLayer
   );
-
-  if (state.baseLayer === "openStreetMap") {
-    drawEnglishCountryLabels(centerX, centerY, radius);
-  }
 }
 
-function generateSamples(start, end, step, builder) {
-  const result = [];
-
-  for (let value = start; value <= end; value += step) {
-    result.push(builder(value));
-  }
-
-  return result;
-}
-
-function drawPolyline(points, centerX, centerY, radius, closePath) {
-  let started = false;
-
-  ctx.beginPath();
-
-  for (let index = 0; index < points.length; index += 1) {
-    const projected = projectPoint(
-      points[index].lat,
-      points[index].lon,
-      radius,
-      centerX,
-      centerY
-    );
-
-    if (!projected.visible) {
-      started = false;
-      continue;
-    }
-
-    if (!started) {
-      ctx.moveTo(projected.x, projected.y);
-      started = true;
-    } else {
-      ctx.lineTo(projected.x, projected.y);
-    }
-  }
-
-  if (closePath && started) {
-    ctx.closePath();
-  }
-
-  ctx.stroke();
-}
-
-function drawGraticule(centerX, centerY, radius) {
-  ctx.save();
-  ctx.lineWidth = 0.7;
-  ctx.strokeStyle = "rgba(120, 170, 255, 0.16)";
-
-  for (let lat = -60; lat <= 60; lat += 30) {
-    drawPolyline(
-      generateSamples(-180, 180, 4, (lon) => ({ lat, lon })),
-      centerX,
-      centerY,
-      radius,
-      false
-    );
-  }
-
-  for (let lon = -150; lon <= 180; lon += 30) {
-    drawPolyline(
-      generateSamples(-85, 85, 4, (lat) => ({ lat, lon })),
-      centerX,
-      centerY,
-      radius,
-      false
-    );
-  }
-
-  ctx.restore();
-}
-
-function coordinatesToLatLon(coordinates) {
-  if (!Array.isArray(coordinates) || coordinates.length < 2) {
-    return [];
-  }
-
-  if (typeof coordinates[0] === "number") {
-    return [{
-      lat: coordinates[1],
-      lon: coordinates[0]
-    }];
-  }
-
-  if (Array.isArray(coordinates[0])) {
-    return coordinates.flatMap(coordinatesToLatLon);
-  }
-
-  return [];
-}
-
-function extractBoundingBox(coordinates, box) {
-  if (!Array.isArray(coordinates) || coordinates.length < 2) {
-    return;
-  }
-
-  if (typeof coordinates[0] === "number") {
-    box.minLon = Math.min(box.minLon, coordinates[0]);
-    box.maxLon = Math.max(box.maxLon, coordinates[0]);
-    box.minLat = Math.min(box.minLat, coordinates[1]);
-    box.maxLat = Math.max(box.maxLat, coordinates[1]);
-    return;
-  }
-
-  coordinates.forEach((entry) => {
-    extractBoundingBox(entry, box);
-  });
-}
-
-function buildCountryLabels(features) {
-  return features
-    .map((feature) => {
-      const box = {
-        minLon: Infinity,
-        maxLon: -Infinity,
-        minLat: Infinity,
-        maxLat: -Infinity
-      };
-
-      extractBoundingBox(
-        feature.geometry?.coordinates,
-        box
-      );
-
-      if (!Number.isFinite(box.minLon)) {
-        return null;
-      }
-
-      return {
-        name: feature.properties?.name ||
-          feature.properties?.admin ||
-          "",
-        labelrank: Number(feature.properties?.labelrank || 99),
-        lat: (box.minLat + box.maxLat) / 2,
-        lon: (box.minLon + box.maxLon) / 2
-      };
-    })
-    .filter(Boolean)
-    .sort((left, right) => left.labelrank - right.labelrank);
-}
-
-function drawEnglishCountryLabels(centerX, centerY, radius) {
-  const minRank = state.zoom >= 3.2
-    ? 7
-    : state.zoom >= 2.2
-      ? 5
-      : 4;
-
-  const minGap = state.zoom >= 3.2
-    ? 28
-    : state.zoom >= 2.2
-      ? 42
-      : 58;
-
-  const placed = [];
-
-  ctx.save();
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-
-  countryLabels.forEach((label) => {
-    if (!label.name || label.labelrank > minRank) {
-      return;
-    }
-
-    const projected = projectPoint(
-      label.lat,
-      label.lon,
-      radius,
-      centerX,
-      centerY
-    );
-
-    if (!projected.visible) {
-      return;
-    }
-
-    const fontSize = label.labelrank <= 2
-      ? 14
-      : label.labelrank <= 4
-        ? 12
-        : 11;
-
-    const collision = placed.some((entry) => {
-      return Math.hypot(
-        entry.x - projected.x,
-        entry.y - projected.y
-      ) < minGap;
-    });
-
-    if (collision) {
-      return;
-    }
-
-    placed.push({
-      x: projected.x,
-      y: projected.y
-    });
-
-    ctx.font = `600 ${fontSize}px "IBM Plex Sans", sans-serif`;
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "rgba(8, 15, 26, 0.88)";
-    ctx.strokeText(label.name, projected.x, projected.y);
-
-    ctx.fillStyle = "rgba(247, 251, 255, 0.96)";
-    ctx.fillText(label.name, projected.x, projected.y);
-  });
-
-  ctx.restore();
-}
-
-function drawCountries(centerX, centerY, radius) {
-  ctx.save();
-  ctx.lineWidth = 0.8;
-  ctx.strokeStyle = "rgba(127, 200, 255, 0.32)";
-
-  countryFeatures.forEach((feature) => {
-    const geometry = feature.geometry || {};
-
-    if (geometry.type === "Polygon") {
-      geometry.coordinates.forEach((ring) => {
-        drawPolyline(
-          coordinatesToLatLon(ring),
-          centerX,
-          centerY,
-          radius,
-          true
-        );
-      });
-    }
-
-    if (geometry.type === "MultiPolygon") {
-      geometry.coordinates.forEach((polygon) => {
-        polygon.forEach((ring) => {
-          drawPolyline(
-            coordinatesToLatLon(ring),
-            centerX,
-            centerY,
-            radius,
-            true
-          );
-        });
-      });
-    }
-  });
-
-  ctx.restore();
-}
-
-function getIntensityLevel(score) {
-  const value = Number(score);
-
-  if (!Number.isFinite(value)) {
-    return "low";
-  }
-
-  if (value >= 85) {
-    return "critical";
-  }
-
-  if (value >= 65) {
-    return "high";
-  }
-
-  if (value >= 40) {
-    return "elevated";
-  }
-
-  return "low";
-}
-
-function getReportStyle(report) {
-  const level = report.intensityLevel ||
-    getIntensityLevel(report.intensityScore);
-
-  return INTENSITY_STYLES[level] || INTENSITY_STYLES.low;
-}
+/* ------------------------------------------------------------------
+   Report card and report-marker functions
+   ------------------------------------------------------------------ */
 
 function formatLocation(report) {
   return `${report.latitude.toFixed(4)}, ${report.longitude.toFixed(4)}`;
@@ -870,14 +714,13 @@ function formatLocation(report) {
 function renderReportCard(report) {
   if (!report) {
     reportCardShellEl.hidden = true;
-    reportCardEl.className = "report-card";
     reportCardEl.innerHTML = "";
     return;
   }
 
   const style = getReportStyle(report);
 
-  const meta = [
+  const metadata = [
     escapeHtml(report.category || "SEERIST"),
     escapeHtml(report.source || "Seerist"),
     escapeHtml(
@@ -887,12 +730,12 @@ function renderReportCard(report) {
     )
   ];
 
-  const countryLine = [
+  const locationName = [
     report.country,
     report.region
   ].filter(Boolean).join(" · ");
 
-  const articleLinkHtml = report.url
+  const articleLink = report.url
     ? `
       <a
         href="${escapeHtml(report.url)}"
@@ -906,10 +749,9 @@ function renderReportCard(report) {
     : "";
 
   reportCardShellEl.hidden = false;
-  reportCardEl.className = "report-card";
 
   reportCardEl.innerHTML = `
-    <div class="card-kicker">${meta.join(" · ")}</div>
+    <div class="card-kicker">${metadata.join(" · ")}</div>
 
     <div class="intensity-badge">
       <span
@@ -919,14 +761,14 @@ function renderReportCard(report) {
       ${escapeHtml(style.label)} intensity
     </div>
 
-    <h3>${escapeHtml(report.title || report.id || "Untitled Article")}</h3>
+    <h3>${escapeHtml(report.title || "Untitled Seerist Article")}</h3>
 
     <p>${escapeHtml(report.summary || "No summary provided.")}</p>
 
     <dl class="report-meta">
       <div>
         <dt>Location</dt>
-        <dd>${escapeHtml(countryLine || "Location coordinates available")}</dd>
+        <dd>${escapeHtml(locationName || "Coordinates available")}</dd>
       </div>
 
       <div>
@@ -945,16 +787,140 @@ function renderReportCard(report) {
       </div>
     </dl>
 
-    ${articleLinkHtml}
+    ${articleLink}
   `;
 }
 
-function updateLayerUi() {
-  layerButtons.forEach((button) => {
-    const active = button.dataset.layer === state.baseLayer;
+function updateReportCount() {
+  reportCountEl.textContent = `${reportMarkers.length} articles`;
+}
 
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", String(active));
+function normalizeReports(items) {
+  const accepted = [];
+  const rejected = [];
+
+  items.forEach((item, index) => {
+    const location = normalizeLatLon(
+      item.latitude,
+      item.longitude
+    );
+
+    if (!location) {
+      rejected.push(index + 1);
+      return;
+    }
+
+    accepted.push({
+      ...item,
+      id: item.id || `seerist-${index + 1}`,
+      title: item.title || `Seerist Article ${index + 1}`,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      intensityScore: clamp(
+        Number(item.intensityScore ?? 50),
+        0,
+        100
+      ),
+      intensityLevel: item.intensityLevel ||
+        getIntensityLevel(item.intensityScore ?? 50)
+    });
+  });
+
+  return {
+    accepted,
+    rejected
+  };
+}
+
+function ingestReports(items) {
+  const { accepted, rejected } = normalizeReports(items);
+
+  reportMarkers = accepted;
+  updateReportCount();
+
+  if (rejected.length && importFeedbackEl) {
+    importFeedbackEl.textContent =
+      `Loaded ${accepted.length} Seerist article(s).\n\n` +
+      `Skipped ${rejected.length} article(s) without valid coordinates.`;
+  }
+
+  if (!accepted.some((report) => report.id === selectedReportId)) {
+    selectedReportId = null;
+    state.selectedMarker = null;
+    state.selectedMarkerPosition = null;
+    renderReportCard(null);
+  }
+
+  drawScene();
+}
+
+function drawReports(centerX, centerY, radius) {
+  projectedMarkers = [];
+  state.selectedMarkerPosition = null;
+
+  reportMarkers.forEach((report) => {
+    const projected = projectPoint(
+      report.latitude,
+      report.longitude,
+      radius,
+      centerX,
+      centerY
+    );
+
+    if (!projected.visible) {
+      return;
+    }
+
+    const selected = report.id === selectedReportId;
+    const markerRadius = selected ? 6 : 4.2;
+    const style = getReportStyle(report);
+
+    ctx.beginPath();
+    ctx.arc(
+      projected.x,
+      projected.y,
+      markerRadius,
+      0,
+      Math.PI * 2
+    );
+
+    ctx.fillStyle = style.color;
+    ctx.shadowColor = selected
+      ? "rgba(255, 211, 109, 0.55)"
+      : style.glow;
+
+    ctx.shadowBlur = selected ? 16 : 12;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    if (selected) {
+      ctx.beginPath();
+      ctx.arc(
+        projected.x,
+        projected.y,
+        markerRadius + 2.6,
+        0,
+        Math.PI * 2
+      );
+
+      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = "rgba(255, 244, 196, 0.95)";
+      ctx.stroke();
+    }
+
+    projectedMarkers.push({
+      report,
+      x: projected.x,
+      y: projected.y,
+      radius: markerRadius + 5
+    });
+
+    if (selected) {
+      state.selectedMarkerPosition = {
+        x: projected.x,
+        y: projected.y
+      };
+    }
   });
 }
 
@@ -980,13 +946,9 @@ function updateCanvasCursor(pointer) {
     return;
   }
 
-  const hovered = pointer
-    ? findMarkerAtPoint(pointer)
-    : null;
-
   canvas.classList.toggle(
     "is-hover-report",
-    Boolean(hovered)
+    Boolean(pointer && findMarkerAtPoint(pointer))
   );
 }
 
@@ -1001,39 +963,94 @@ function positionReportCard() {
   const frameRect = canvas.parentElement.getBoundingClientRect();
   const canvasRect = canvas.getBoundingClientRect();
 
-  const shellWidth = reportCardShellEl.offsetWidth;
-  const shellHeight = reportCardShellEl.offsetHeight;
+  const width = reportCardShellEl.offsetWidth;
+  const height = reportCardShellEl.offsetHeight;
 
   const dotX = state.selectedMarkerPosition.x +
-    (canvasRect.left - frameRect.left);
+    canvasRect.left -
+    frameRect.left;
 
   const dotY = state.selectedMarkerPosition.y +
-    (canvasRect.top - frameRect.top);
+    canvasRect.top -
+    frameRect.top;
 
   const gap = 18;
   const padding = 16;
 
   let left = dotX + gap;
-  let top = dotY - shellHeight * 0.5;
+  let top = dotY - height / 2;
 
-  if (left + shellWidth > frameRect.width - padding) {
-    left = dotX - shellWidth - gap;
+  if (left + width > frameRect.width - padding) {
+    left = dotX - width - gap;
   }
 
-  left = clamp(
-    left,
-    padding,
-    frameRect.width - shellWidth - padding
-  );
-
-  top = clamp(
-    top,
-    padding,
-    frameRect.height - shellHeight - padding
-  );
+  left = clamp(left, padding, frameRect.width - width - padding);
+  top = clamp(top, padding, frameRect.height - height - padding);
 
   reportCardShellEl.style.left = `${left}px`;
   reportCardShellEl.style.top = `${top}px`;
+}
+
+/* ------------------------------------------------------------------
+   Main rendering and base-map loading
+   ------------------------------------------------------------------ */
+
+function drawScene() {
+  const ratio = window.devicePixelRatio || 1;
+  const bounds = canvas.getBoundingClientRect();
+
+  const width = bounds.width;
+  const height = bounds.height;
+
+  canvas.width = Math.floor(width * ratio);
+  canvas.height = Math.floor(height * ratio);
+
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+  const centerX = width / 2;
+  const centerY = height / 2;
+
+  const radius = Math.min(width, height) * 0.43 * state.zoom;
+
+  state.view = {
+    centerX,
+    centerY,
+    radius
+  };
+
+  const background = ctx.createLinearGradient(
+    0,
+    0,
+    width,
+    height
+  );
+
+  background.addColorStop(0, "#08111b");
+  background.addColorStop(1, "#05080f");
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, width, height);
+
+  drawBaseLayer(centerX, centerY, radius);
+  drawReports(centerX, centerY, radius);
+  positionReportCard();
+}
+
+async function loadCountries() {
+  try {
+    const response = await fetch(COUNTRY_DATA_URL);
+    const data = await response.json();
+
+    countryFeatures = Array.isArray(data.features)
+      ? data.features
+      : [];
+
+  } catch (error) {
+    console.error("Country boundary data unavailable:", error);
+  }
+
+  drawScene();
 }
 
 function loadTextureLayer(key, layer) {
@@ -1078,207 +1095,12 @@ function initializeBaseLayers() {
     }
   });
 
-  updateLayerUi();
-}
+  layerButtons.forEach((button) => {
+    const active = button.dataset.layer === state.baseLayer;
 
-function normalizeReports(items) {
-  const accepted = [];
-  const rejected = [];
-
-  items.forEach((item, index) => {
-    const location = normalizeLatLon(
-      item.latitude,
-      item.longitude
-    );
-
-    if (!location) {
-      rejected.push(
-        `Article ${index + 1} does not contain usable latitude/longitude.`
-      );
-
-      return;
-    }
-
-    accepted.push({
-      ...item,
-      id: item.id || `seerist-article-${index + 1}`,
-      title: item.title || `Seerist Article ${index + 1}`,
-      latitude: location.latitude,
-      longitude: location.longitude,
-      intensityScore: clamp(
-        Number(item.intensityScore ?? 50),
-        0,
-        100
-      ),
-      intensityLevel: item.intensityLevel ||
-        getIntensityLevel(item.intensityScore ?? 50)
-    });
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
   });
-
-  return {
-    accepted,
-    rejected
-  };
-}
-
-function updateReportCount() {
-  reportCountEl.textContent = `${reportMarkers.length} articles`;
-}
-
-function ingestReports(items) {
-  const { accepted, rejected } = normalizeReports(items);
-
-  reportMarkers = accepted;
-  updateReportCount();
-
-  if (rejected.length) {
-    importFeedbackEl.textContent =
-      `Loaded ${accepted.length} Seerist article(s).\n\n` +
-      `Skipped ${rejected.length} article(s) without usable map coordinates.`;
-  }
-
-  if (!accepted.some((report) => report.id === selectedReportId)) {
-    selectedReportId = null;
-    state.selectedMarker = null;
-    state.selectedMarkerPosition = null;
-    renderReportCard(null);
-  }
-
-  drawScene();
-}
-
-function drawReports(centerX, centerY, radius) {
-  projectedMarkers = [];
-  state.selectedMarkerPosition = null;
-
-  reportMarkers.forEach((report) => {
-    const projected = projectPoint(
-      report.latitude,
-      report.longitude,
-      radius,
-      centerX,
-      centerY
-    );
-
-    if (!projected.visible) {
-      return;
-    }
-
-    const selected = report.id === selectedReportId;
-    const dotRadius = selected ? 6 : 4.2;
-    const style = getReportStyle(report);
-
-    ctx.beginPath();
-    ctx.arc(
-      projected.x,
-      projected.y,
-      dotRadius,
-      0,
-      Math.PI * 2
-    );
-
-    ctx.fillStyle = style.color;
-    ctx.shadowColor = selected
-      ? "rgba(255, 211, 109, 0.55)"
-      : style.glow;
-
-    ctx.shadowBlur = selected ? 16 : 12;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    if (selected) {
-      ctx.beginPath();
-
-      ctx.arc(
-        projected.x,
-        projected.y,
-        dotRadius + 2.6,
-        0,
-        Math.PI * 2
-      );
-
-      ctx.lineWidth = 1.4;
-      ctx.strokeStyle = "rgba(255, 244, 196, 0.95)";
-      ctx.stroke();
-    }
-
-    projectedMarkers.push({
-      report,
-      x: projected.x,
-      y: projected.y,
-      radius: dotRadius + 5
-    });
-
-    if (selected) {
-      state.selectedMarkerPosition = {
-        x: projected.x,
-        y: projected.y
-      };
-    }
-  });
-}
-
-function drawScene() {
-  const ratio = window.devicePixelRatio || 1;
-  const bounds = canvas.getBoundingClientRect();
-
-  const width = bounds.width;
-  const height = bounds.height;
-
-  canvas.width = Math.floor(width * ratio);
-  canvas.height = Math.floor(height * ratio);
-
-  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-
-  const centerX = width / 2;
-  const centerY = height / 2;
-
-  const radius = Math.min(width, height) *
-    0.43 *
-    state.zoom;
-
-  state.view = {
-    centerX,
-    centerY,
-    radius
-  };
-
-  ctx.clearRect(0, 0, width, height);
-
-  const backdrop = ctx.createLinearGradient(
-    0,
-    0,
-    width,
-    height
-  );
-
-  backdrop.addColorStop(0, "#08111b");
-  backdrop.addColorStop(1, "#05080f");
-
-  ctx.fillStyle = backdrop;
-  ctx.fillRect(0, 0, width, height);
-
-  drawBaseLayer(centerX, centerY, radius);
-  drawReports(centerX, centerY, radius);
-  positionReportCard();
-}
-
-async function loadCountries() {
-  try {
-    const response = await fetch(COUNTRY_DATA_URL);
-    const data = await response.json();
-
-    countryFeatures = Array.isArray(data.features)
-      ? data.features
-      : [];
-
-    countryLabels = buildCountryLabels(countryFeatures);
-
-  } catch (error) {
-    console.error("Boundary data unavailable:", error);
-  }
-
-  drawScene();
 }
 
 /* ------------------------------------------------------------------
@@ -1314,14 +1136,14 @@ async function seeristApiRequest(url, token, options = {}) {
     }
   });
 
-  const responseText = await response.text();
+  const text = await response.text();
 
   let data;
 
   try {
-    data = responseText ? JSON.parse(responseText) : null;
+    data = text ? JSON.parse(text) : null;
   } catch {
-    data = responseText;
+    data = text;
   }
 
   if (!response.ok) {
@@ -1339,7 +1161,7 @@ async function seeristApiRequest(url, token, options = {}) {
 }
 
 async function getAllSeeristFolderItems(baseUrl, token, folderId) {
-  const allItems = [];
+  const items = [];
   const perPage = 100;
 
   let page = 1;
@@ -1352,17 +1174,19 @@ async function getAllSeeristFolderItems(baseUrl, token, folderId) {
       `?page=${page}&perPage=${perPage}&includeContent=true`
     );
 
-    const result = await seeristApiRequest(url, token, {
-      method: "GET"
-    });
+    const result = await seeristApiRequest(
+      url,
+      token,
+      { method: "GET" }
+    );
 
-    allItems.push(...(result.items || []));
+    items.push(...(result.items || []));
 
     hasMore = Boolean(result.pagination?.hasMore);
     page += 1;
   }
 
-  return allItems;
+  return items;
 }
 
 async function mapWithConcurrency(items, limit, worker) {
@@ -1370,13 +1194,9 @@ async function mapWithConcurrency(items, limit, worker) {
   let nextIndex = 0;
 
   async function workerLoop() {
-    while (true) {
+    while (nextIndex < items.length) {
       const currentIndex = nextIndex;
       nextIndex += 1;
-
-      if (currentIndex >= items.length) {
-        return;
-      }
 
       results[currentIndex] = await worker(
         items[currentIndex],
@@ -1385,11 +1205,11 @@ async function mapWithConcurrency(items, limit, worker) {
     }
   }
 
-  const workerCount = Math.min(limit, items.length);
+  const workers = Math.min(limit, items.length);
 
   await Promise.all(
     Array.from(
-      { length: workerCount },
+      { length: workers },
       () => workerLoop()
     )
   );
@@ -1579,46 +1399,41 @@ async function fetchSeeristVzlaReports() {
     VZLA_FOLDER_ID
   );
 
-  const itemsByContentId = new Map(
+  const itemByContentId = new Map(
     folderItems
       .filter((item) => item.contentId)
       .map((item) => [item.contentId, item])
   );
 
-  const contentIds = [...itemsByContentId.keys()];
+  const contentIds = [...itemByContentId.keys()];
 
   if (!contentIds.length) {
-    if (feedStatusEl) {
-      feedStatusEl.textContent = "SEERIST: NO ITEMS";
-    }
-
     return [];
   }
 
-  const results = await mapWithConcurrency(
+  const reports = await mapWithConcurrency(
     contentIds,
     SEERIST_CONTENT_CONCURRENCY,
     async (contentId, index) => {
-      const folderItem = itemsByContentId.get(contentId);
-
       if (feedStatusEl) {
         feedStatusEl.textContent =
           `SEERIST ${index + 1}/${contentIds.length}`;
       }
 
       try {
-        const articleUrl = buildSeeristUrl(
-          baseUrl,
-          `/content/${encodeURIComponent(contentId)}`
-        );
-
         const article = await seeristApiRequest(
-          articleUrl,
+          buildSeeristUrl(
+            baseUrl,
+            `/content/${encodeURIComponent(contentId)}`
+          ),
           token,
           { method: "GET" }
         );
 
-        return seeristArticleToReport(article, folderItem);
+        return seeristArticleToReport(
+          article,
+          itemByContentId.get(contentId)
+        );
 
       } catch (error) {
         console.warn(
@@ -1631,18 +1446,10 @@ async function fetchSeeristVzlaReports() {
     }
   );
 
-  const reports = results.filter(Boolean);
-
-  if (feedStatusEl) {
-    feedStatusEl.textContent = "SEERIST VZLA";
-  }
-
-  return reports;
+  return reports.filter(Boolean);
 }
 
 async function loadSeeristVzlaNews() {
-  console.log("Starting Seerist VZLA load.");
-
   if (reportCountEl) {
     reportCountEl.textContent = "Loading Seerist data...";
   }
@@ -1658,7 +1465,6 @@ async function loadSeeristVzlaNews() {
   try {
     const reports = await fetchSeeristVzlaReports();
 
-    // Clear all prior markers and retain only Seerist data.
     allLiveReports = reports;
     reportMarkers = [];
     projectedMarkers = [];
@@ -1670,6 +1476,10 @@ async function loadSeeristVzlaNews() {
     renderReportCard(null);
     ingestReports(reports);
 
+    if (feedStatusEl) {
+      feedStatusEl.textContent = "SEERIST VZLA";
+    }
+
     if (importFeedbackEl) {
       importFeedbackEl.textContent =
         `Loaded ${reports.length} Seerist VZLA article(s) ` +
@@ -1677,7 +1487,6 @@ async function loadSeeristVzlaNews() {
     }
 
   } catch (error) {
-    // Do not retain old data if the Seerist request fails.
     allLiveReports = [];
     reportMarkers = [];
     projectedMarkers = [];
@@ -1712,6 +1521,10 @@ async function loadSeeristVzlaNews() {
   }
 }
 
+/* ------------------------------------------------------------------
+   Event handling
+   ------------------------------------------------------------------ */
+
 function readPointerPosition(event) {
   const rect = canvas.getBoundingClientRect();
 
@@ -1723,7 +1536,7 @@ function readPointerPosition(event) {
 
 canvas.addEventListener("pointerdown", (event) => {
   const pointer = readPointerPosition(event);
-  const anchor = invertPoint(pointer, false);
+  const anchor = invertPoint(pointer);
 
   state.dragging = Boolean(anchor);
 
@@ -1741,43 +1554,43 @@ canvas.addEventListener("pointerdown", (event) => {
 });
 
 canvas.addEventListener("pointermove", (event) => {
-  const current = readPointerPosition(event);
+  const pointer = readPointerPosition(event);
 
   if (
     !state.dragging ||
     !state.pointerDown ||
     !state.pointerDown.anchor
   ) {
-    updateCanvasCursor(current);
+    updateCanvasCursor(pointer);
     return;
   }
 
-  const nextRotation = solveRotationForAnchor(
+  const rotation = solveRotationForAnchor(
     state.pointerDown.anchor,
-    current
+    pointer
   );
 
-  if (nextRotation) {
-    state.rotationLon = nextRotation.lon;
-    state.rotationLat = nextRotation.lat;
+  if (rotation) {
+    state.rotationLon = rotation.lon;
+    state.rotationLat = rotation.lat;
     drawScene();
   }
 });
 
 canvas.addEventListener("pointerup", (event) => {
-  const up = readPointerPosition(event);
+  const pointer = readPointerPosition(event);
 
-  const down = state.pointerDown
+  const downPointer = state.pointerDown
     ? state.pointerDown.pointer
-    : up;
+    : pointer;
 
-  const moved = Math.hypot(
-    up.x - down.x,
-    up.y - down.y
+  const distance = Math.hypot(
+    pointer.x - downPointer.x,
+    pointer.y - downPointer.y
   );
 
-  if (moved < 8) {
-    const hit = findMarkerAtPoint(up);
+  if (distance < 8) {
+    const hit = findMarkerAtPoint(pointer);
 
     selectedReportId = hit
       ? hit.report.id
@@ -1796,7 +1609,7 @@ canvas.addEventListener("pointerup", (event) => {
   canvas.classList.remove("is-dragging");
 
   drawScene();
-  updateCanvasCursor(up);
+  updateCanvasCursor(pointer);
 });
 
 canvas.addEventListener("pointercancel", () => {
@@ -1830,7 +1643,22 @@ canvas.addEventListener("wheel", (event) => {
 
 window.addEventListener("resize", drawScene);
 
-if (seeristToggleEl) {
+layerButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    state.baseLayer = button.dataset.layer;
+
+    layerButtons.forEach((otherButton) => {
+      const active = otherButton.dataset.layer === state.baseLayer;
+
+      otherButton.classList.toggle("active", active);
+      otherButton.setAttribute("aria-pressed", String(active));
+    });
+
+    drawScene();
+  });
+});
+
+if (seeristToggleEl && seeristBodyEl) {
   seeristToggleEl.addEventListener("click", () => {
     const expanded =
       seeristToggleEl.getAttribute("aria-expanded") === "true";
@@ -1843,15 +1671,6 @@ if (seeristToggleEl) {
     seeristBodyEl.hidden = expanded;
   });
 }
-
-layerButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    state.baseLayer = button.dataset.layer;
-
-    updateLayerUi();
-    drawScene();
-  });
-});
 
 if (loadSeeristVzlaBtn) {
   loadSeeristVzlaBtn.addEventListener("click", () => {
@@ -1877,14 +1696,17 @@ if (closeCardBtn) {
 }
 
 /*
-  Optional refresh: runs only after a user has entered a token.
-  Remove this block if automatic refresh is not desired.
+  Optional automatic refresh. It runs only after a token has been entered.
 */
 setInterval(() => {
   if (getSeeristToken()) {
     loadSeeristVzlaNews();
   }
 }, 5 * 60 * 1000);
+
+/* ------------------------------------------------------------------
+   Application startup
+   ------------------------------------------------------------------ */
 
 renderReportCard(null);
 initializeBaseLayers();
