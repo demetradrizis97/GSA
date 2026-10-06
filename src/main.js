@@ -51,21 +51,18 @@ const ctx = canvas.getContext("2d");
 const reportCountEl = document.getElementById("report-count");
 const reportCardShellEl = document.querySelector(".map-overlay-card");
 const reportCardEl = document.getElementById("report-card");
-const reportInputEl = document.getElementById("report-input");
 const importFeedbackEl = document.getElementById("import-feedback");
-const importButton = document.getElementById("import-reports");
-const importToggleEl = document.getElementById("import-toggle");
-const importBodyEl = document.getElementById("import-body");
 const layerButtons = Array.from(document.querySelectorAll(".layer-option"));
-const sampleButton = document.getElementById("load-sample");
 const refreshNewsBtn = document.getElementById("refresh-news-btn");
 const closeCardBtn = document.getElementById("close-card-btn");
 const feedStatusEl = document.getElementById("feed-status");
-const categoryChips = Array.from(document.querySelectorAll(".filter-chip"));
-const loadLiveApiBtn = document.getElementById("load-live-api");
+const seeristBaseUrlEl = document.getElementById("seerist-base-url");
+const seeristTokenEl = document.getElementById("seerist-token");
+const seeristToggleEl = document.getElementById("seerist-toggle");
+const seeristBodyEl = document.getElementById("seerist-body");
+const loadSeeristVzlaBtn = document.getElementById("load-seerist-vzla");
 
 let allLiveReports = [];
-let currentCategory = "ALL";
 
 const locatorResolvers = new Map();
 const textureLayers = new Map();
@@ -1084,14 +1081,6 @@ async function fetchLiveNewsReports() {
   throw new Error("Unable to connect to live news API or fallback snapshot.");
 }
 
-function applyCategoryFilter() {
-  let filtered = allLiveReports;
-  if (currentCategory && currentCategory !== "ALL") {
-    filtered = allLiveReports.filter(r => (r.category || "").toUpperCase() === currentCategory);
-  }
-  reportInputEl.value = JSON.stringify(filtered, null, 2);
-  ingestReports(filtered);
-}
 
 async function loadLiveNews() {
   if (reportCountEl) reportCountEl.textContent = "Fetching news...";
@@ -1103,7 +1092,6 @@ async function loadLiveNews() {
     applyCategoryFilter();
     importFeedbackEl.textContent = `Connected! ${reports.length} real-time global news headlines active.`;
   } catch (error) {
-    reportInputEl.value = "[]";
     reportMarkers = [];
     updateReportCount();
     drawScene();
@@ -1200,10 +1188,11 @@ canvas.addEventListener("wheel", (event) => {
 
 window.addEventListener("resize", drawScene);
 
-importToggleEl.addEventListener("click", () => {
-  const expanded = importToggleEl.getAttribute("aria-expanded") === "true";
-  importToggleEl.setAttribute("aria-expanded", String(!expanded));
-  importBodyEl.hidden = expanded;
+seeristToggleEl.addEventListener("click", () => {
+  const expanded = seeristToggleEl.getAttribute("aria-expanded") === "true";
+
+  seeristToggleEl.setAttribute("aria-expanded", String(!expanded));
+  seeristBodyEl.hidden = expanded;
 });
 
 layerButtons.forEach((button) => {
@@ -1214,21 +1203,15 @@ layerButtons.forEach((button) => {
   });
 });
 
-if (sampleButton) {
-  sampleButton.addEventListener("click", () => {
-    loadLiveNews();
-  });
-}
-
-if (loadLiveApiBtn) {
-  loadLiveApiBtn.addEventListener("click", () => {
-    loadLiveNews();
-  });
-}
-
 if (refreshNewsBtn) {
   refreshNewsBtn.addEventListener("click", () => {
-    loadLiveNews();
+    loadSeeristVzlaNews();
+  });
+}
+
+if (loadSeeristVzlaBtn) {
+  loadSeeristVzlaBtn.addEventListener("click", () => {
+    loadSeeristVzlaNews();
   });
 }
 
@@ -1238,39 +1221,17 @@ if (closeCardBtn) {
   });
 }
 
-categoryChips.forEach(chip => {
-  chip.addEventListener("click", () => {
-    categoryChips.forEach(c => c.classList.remove("active"));
-    chip.classList.add("active");
-    currentCategory = chip.dataset.category || "ALL";
-    applyCategoryFilter();
-  });
-});
 
-importButton.addEventListener("click", () => {
-  try {
-    const parsed = JSON.parse(reportInputEl.value);
-    if (!Array.isArray(parsed)) {
-      throw new Error("Top-level value must be an array.");
-    }
-    allLiveReports = parsed;
-    ingestReports(parsed);
-  } catch (error) {
-    importFeedbackEl.textContent = error.message;
-  }
-});
 
 // Auto-refresh news feeds every 5 minutes
 setInterval(() => {
   loadLiveNews();
 }, 5 * 60 * 1000);
 
-reportInputEl.value = "[]";
 renderReportCard(null);
 initializeBaseLayers();
 drawScene();
 loadCountries();
-loadLiveNews();
 
 window.ReportsGlobe = {
   registerLocatorResolver,
