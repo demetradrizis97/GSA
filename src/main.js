@@ -1643,30 +1643,22 @@ async function fetchSeeristVzlaReports() {
 async function loadSeeristVzlaNews() {
   console.log("Starting Seerist VZLA load.");
 
-  if (typeof fetchSeeristVzlaReports !== "function") {
-    throw new Error(
-      "fetchSeeristVzlaReports() is missing from main.js. Add the Seerist API functions before using this button."
-    );
+  if (reportCountEl) {
+    reportCountEl.textContent = "Loading Seerist data...";
   }
 
-  const reports = await fetchSeeristVzlaReports();
+  if (refreshNewsBtn) {
+    refreshNewsBtn.classList.add("spinning");
+  }
 
-  allLiveReports = reports;
-  reportMarkers = [];
-  projectedMarkers = [];
-
-  selectedReportId = null;
-  state.selectedMarker = null;
-  state.selectedMarkerPosition = null;
-
-  renderReportCard(null);
-  ingestReports(reports);
-}
+  if (loadSeeristVzlaBtn) {
+    loadSeeristVzlaBtn.disabled = true;
+  }
 
   try {
     const reports = await fetchSeeristVzlaReports();
 
-    // Remove all prior globe data and retain Seerist-only records.
+    // Clear all prior markers and retain only Seerist data.
     allLiveReports = reports;
     reportMarkers = [];
     projectedMarkers = [];
@@ -1678,9 +1670,11 @@ async function loadSeeristVzlaNews() {
     renderReportCard(null);
     ingestReports(reports);
 
-    importFeedbackEl.textContent =
-      `Loaded ${reports.length} Seerist VZLA article(s) ` +
-      "with usable coordinates.";
+    if (importFeedbackEl) {
+      importFeedbackEl.textContent =
+        `Loaded ${reports.length} Seerist VZLA article(s) ` +
+        "with usable coordinates.";
+    }
 
   } catch (error) {
     // Do not retain old data if the Seerist request fails.
@@ -1700,8 +1694,10 @@ async function loadSeeristVzlaNews() {
       feedStatusEl.textContent = "SEERIST ERROR";
     }
 
-    importFeedbackEl.textContent =
-      `Unable to load Seerist VZLA data: ${error.message}`;
+    if (importFeedbackEl) {
+      importFeedbackEl.textContent =
+        `Unable to load Seerist VZLA data: ${error.message}`;
+    }
 
     console.error("Seerist VZLA load failed:", error);
 
