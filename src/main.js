@@ -1641,17 +1641,27 @@ async function fetchSeeristVzlaReports() {
 }
 
 async function loadSeeristVzlaNews() {
-  if (reportCountEl) {
-    reportCountEl.textContent = "Loading Seerist data...";
+  console.log("Starting Seerist VZLA load.");
+
+  if (typeof fetchSeeristVzlaReports !== "function") {
+    throw new Error(
+      "fetchSeeristVzlaReports() is missing from main.js. Add the Seerist API functions before using this button."
+    );
   }
 
-  if (refreshNewsBtn) {
-    refreshNewsBtn.classList.add("spinning");
-  }
+  const reports = await fetchSeeristVzlaReports();
 
-  if (loadSeeristVzlaBtn) {
-    loadSeeristVzlaBtn.disabled = true;
-  }
+  allLiveReports = reports;
+  reportMarkers = [];
+  projectedMarkers = [];
+
+  selectedReportId = null;
+  state.selectedMarker = null;
+  state.selectedMarkerPosition = null;
+
+  renderReportCard(null);
+  ingestReports(reports);
+}
 
   try {
     const reports = await fetchSeeristVzlaReports();
