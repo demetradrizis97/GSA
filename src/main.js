@@ -1114,7 +1114,23 @@ function getSeeristBaseUrl() {
 }
 
 function getSeeristToken() {
-  return (seeristTokenEl?.value || "").trim();
+  const rawToken = seeristTokenEl?.value || "";
+
+  // Remove common invisible characters introduced by copy/paste.
+  const cleanedToken = rawToken
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .replace(/^Bearer\s+/i, "");
+
+  // HTTP header values must not contain non-ASCII Unicode characters.
+  if (/[^\x20-\x7E]/.test(cleanedToken)) {
+    throw new Error(
+      "The Seerist token contains a non-ASCII or hidden character. " +
+      "Clear the field and paste the raw token again without quotation marks."
+    );
+  }
+
+  return cleanedToken;
 }
 
 function buildSeeristUrl(baseUrl, path) {
